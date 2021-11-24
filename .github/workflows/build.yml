@@ -1,0 +1,21 @@
+name: build
+
+on:
+  push:
+    branches: ['main']
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - id: calculate
+      run: |
+        sudo apt update
+        sudo apt -y -qq install cmake make gcc
+        mkdir build
+        cmake -S . -B build
+        cmake --build build --parallel $(nproc)
+        ./build/examples/push
+        ./build/examples/future-int
+        ./build/examples/future-void
