@@ -58,6 +58,9 @@ public:
     thread_pool& operator=(thread_pool const&) = delete;
     thread_pool& operator=(thread_pool&&) noexcept = delete;
 
+    /// Returns the number of spawned threads.
+    size_t size() const { return queues_.size(); }
+
     /// Pushes some work to the thread_pool.
     void push(task_type<void> const& task);
 
