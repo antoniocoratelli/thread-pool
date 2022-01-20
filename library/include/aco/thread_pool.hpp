@@ -107,8 +107,8 @@ thread_pool<NumRounds>::thread_pool(size_t n_threads):
 
 template<size_t NumRounds>
 thread_pool<NumRounds>::~thread_pool() noexcept {
-    auto call_done = [this](queue& q) { q.done(); };
-    auto call_join = [this](std::thread& t) { t.join(); };
+    auto call_done = [](queue& q) { q.done(); };
+    auto call_join = [](std::thread& t) { t.join(); };
     std::for_each(begin(queues_), end(queues_), call_done);
     std::for_each(begin(threads_), end(threads_), call_join);
 }
