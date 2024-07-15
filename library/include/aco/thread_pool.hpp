@@ -1,4 +1,4 @@
-// Copyright 2021 Antonio Coratelli
+// Copyright 2021-2024 Antonio Coratelli
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@
 namespace aco {
 
 /// A minimalist implementation of a C++17 thread-pool-based task scheduler with
-/// task-stealing, in around 200 lines of header-only code with no external 
+/// task-stealing, in around 200 lines of header-only code with no external
 /// dependencies.
 ///
 /// The implementation is based on the task scheduler system described by
@@ -50,7 +50,7 @@ public:
     /// Constructs an aco::thread_pool with the desired amount of threads.
     /// If `n_threads` is 0, the thread_pool will instantiate a number
     /// of threads equal to the hardware concurrency level of the machine.
-    explicit thread_pool(size_t n_threads = 0);
+    explicit thread_pool(size_t n_threads, std::chrono::nanoseconds max_cv_loop_duration);
 
     ~thread_pool() noexcept;
     thread_pool(thread_pool const&) = delete;
@@ -74,7 +74,7 @@ private:
     class queue {
     public:
         queue();
-        bool pop(task_type<void>& task);
+        bool pop(task_type<void>& task, std::chrono::nanoseconds max_cv_loop_duration);
         void push(task_type<void> const& task);
         bool try_pop(task_type<void>& task);
         bool try_push(task_type<void> const& task);
@@ -88,6 +88,7 @@ private:
         std::condition_variable ready_;
     };
 
+    std::chrono::nanoseconds max_cv_loop_duration_;
     std::vector<std::thread> threads_;
     std::vector<queue> queues_;
     std::atomic_size_t counter_;
@@ -97,8 +98,12 @@ private:
 };
 
 template<size_t NumRounds>
-thread_pool<NumRounds>::thread_pool(size_t n_threads):
-    queues_{get_n_threads_(n_threads)}, counter_{0} {
+thread_pool<NumRounds>::thread_pool(
+        size_t n_threads,
+        std::chrono::nanoseconds max_cv_loop_duration):
+    max_cv_loop_duration_{max_cv_loop_duration},
+    queues_{get_n_threads_(n_threads)},
+    counter_{0} {
     threads_.reserve(queues_.size());
     for (size_t n = 0; n < queues_.size(); ++n) {
         threads_.emplace_back([this, n] { this->run_(n); });
@@ -158,7 +163,7 @@ void thread_pool<NumRounds>::run_(size_t thread_index) {
                 if (queues_[index].try_pop(task)) break;
             }
         }
-        if (not task and not queues_[thread_index].pop(task)) break;
+        if (!task && !queues_[thread_index].pop(task, max_cv_loop_duration_)) break;
         assert(task);
         task();
     }
@@ -178,11 +183,12 @@ thread_pool<NumRounds>::queue::queue(): done_{false} {
 }
 
 template<size_t NumRounds>
-bool thread_pool<NumRounds>::queue::pop(task_type<void>& task) {
+bool thread_pool<NumRounds>::queue::pop(
+        task_type<void>& task,
+        std::chrono::nanoseconds max_cv_loop_duration) {
     auto lock = lock_type{mutex_};
-    while (queue_.empty() and not done_) {
-        using std::chrono::operator""ms;
-        ready_.wait_for(lock, 250ms);
+    while (queue_.empty() && !done_) {
+        ready_.wait_for(lock, max_cv_loop_duration);
     }
     if (queue_.empty()) return false;
     task = std::move(queue_.front());
@@ -202,7 +208,7 @@ void thread_pool<NumRounds>::queue::push(task_type<void> const& task) {
 template<size_t NumRounds>
 bool thread_pool<NumRounds>::queue::try_pop(task_type<void>& task) {
     auto lock = lock_type{mutex_, std::try_to_lock};
-    if (not lock or queue_.empty()) return false;
+    if (!lock || queue_.empty()) return false;
     task = std::move(queue_.front());
     queue_.pop_front();
     return true;
@@ -212,7 +218,7 @@ template<size_t NumRounds>
 bool thread_pool<NumRounds>::queue::try_push(task_type<void> const& task) {
     {
         auto lock = lock_type{mutex_, std::try_to_lock};
-        if (not lock) return false;
+        if (!lock) return false;
         queue_.push_back(task);
     }
     ready_.notify_one();

@@ -10,7 +10,8 @@ std::atomic_int counter{0};
 std::function<void()> TaskFactory(std::atomic_int* counter_ptr);
 
 int main() {
-    aco::thread_pool tp{4};
+    using std::chrono::operator""ms;
+    aco::thread_pool tp{4, 50ms};
     size_t const n_tasks = 1000;
     std::vector<std::future<void>> futures;
     futures.reserve(n_tasks);

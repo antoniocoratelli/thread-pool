@@ -11,7 +11,8 @@ std::function<void()> TaskFactory(std::atomic_int* counter_ptr);
 
 int main() {
     {
-        aco::thread_pool tp{4};
+        using std::chrono::operator""ms;
+        aco::thread_pool tp{4, 50ms};
         size_t const n_tasks = 1000;
         std::cout << "Pushing tasks ..." << std::endl;
         for (size_t n = 0; n < n_tasks; ++n) {
